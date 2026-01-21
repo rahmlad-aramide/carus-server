@@ -15,6 +15,7 @@ import catchController from '../../utils/catchControllerAsyncs'
 export const getTransactions = catchController(
   async (req: Request, res: Response) => {
     const user: User | undefined = req.user
+    const { type } = req.query
 
     if (!user) {
       return res
@@ -25,27 +26,34 @@ export const getTransactions = catchController(
     const transactionRepository = AppDataSource.getRepository(Transaction)
     const redemptionRepository = AppDataSource.getRepository(Redemption)
 
-    const transactions = await transactionRepository.find({
-      relations: {
-        user: true,
-      },
-      where: {
-        user: {
-          id: user.id,
-        },
-      },
-    })
+    let transactions = []
+    let redemptions = []
 
-    const redemptions = await redemptionRepository.find({
-      relations: {
-        user: true,
-      },
-      where: {
-        user: {
-          id: user.id,
+    if (type === 'credit' || !type) {
+      transactions = await transactionRepository.find({
+        relations: {
+          user: true,
         },
-      },
-    })
+        where: {
+          user: {
+            id: user.id,
+          },
+        },
+      })
+    }
+
+    if (type === 'debit' || !type) {
+      redemptions = await redemptionRepository.find({
+        relations: {
+          user: true,
+        },
+        where: {
+          user: {
+            id: user.id,
+          },
+        },
+      })
+    }
 
     const combined = [...transactions, ...redemptions].sort(
       (a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0),
@@ -65,7 +73,7 @@ export const getTransactions = catchController(
               status: item.status,
               description: item.description,
             }
-          } else {
+          } else if (item instanceof Redemption) {
             return {
               transaction_id: item.id,
               amount: item.points,
@@ -76,6 +84,7 @@ export const getTransactions = catchController(
               description: item.description,
             }
           }
+          return null
         }),
         [],
         returnSuccess,
