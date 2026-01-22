@@ -1,15 +1,9 @@
-import bcrypt from 'bcryptjs'
-import { Request, Response } from 'express'
-import { StatusCodes } from 'http-status-codes'
-
-import { UserRoleEnum } from '../../@types/user'
-import { AppDataSource } from '../../data-source'
-import { Configurations } from '../../entities/configurations'
-import { Redemption, RedemptionStatus } from '../../entities/redemption'
-import { Schedule } from '../../entities/schedule'
-import { Transaction } from '../../entities/transactions'
-import { User } from '../../entities/user'
-import { Wallet } from '../../entities/wallet'
+import {
+  Transaction,
+  TransactionType,
+  TransactionDirection,
+  TransactionStatus,
+} from '../../entities/transactions'
 import {
   generalResponse,
   invalidCredentials,
@@ -17,12 +11,26 @@ import {
   returnSuccess,
   userNotFound,
 } from '../../helpers/constants'
+import bcrypt from 'bcryptjs'
+import { Request, Response } from 'express'
+import { StatusCodes } from 'http-status-codes'
+
+import { UserRoleEnum } from '../../@types/user'
+import { Configurations } from '../../entities/configurations'
+import { Redemption, RedemptionStatus } from '../../entities/redemption'
+import { Schedule } from '../../entities/schedule'
+import { User } from '../../entities/user'
+import { Wallet } from '../../entities/wallet'
 import generateToken from '../../helpers/generateToken'
 import catchController from '../../utils/catchControllerAsyncs'
+import { AppDataSource } from '../../data-source'
 
 const scheduleRepository = AppDataSource.getRepository(Schedule)
 const userRepository = AppDataSource.getRepository(User)
 const walletRepository = AppDataSource.getRepository(Wallet)
+const transactionRepository = AppDataSource.getRepository(Transaction)
+const redemptionRepository = AppDataSource.getRepository(Redemption)
+const configurationRepository = AppDataSource.getRepository(Configurations)
 
 export const loginAdmin = catchController(
   async (req: Request, res: Response) => {
@@ -149,8 +157,6 @@ export const loginAdmin = catchController(
 export const approveRedemption = catchController(
   async (req: Request, res: Response) => {
     const id = req.params.id as string
-    const redemptionRepository = AppDataSource.getRepository(Redemption)
-    const transactionRepository = AppDataSource.getRepository(Transaction)
     const redemption = await redemptionRepository.findOne({
       where: { id },
       relations: ['user', 'user.wallet'],
@@ -182,18 +188,22 @@ export const approveRedemption = catchController(
         )
     }
 
-    redemption.status = RedemptionStatus.PAID
+    redemption.status = RedemptionStatus.FULFILLED
     await redemptionRepository.save(redemption)
 
     // Create transaction record for approval
     if (redemption.user) {
       const redemptionType = redemption.type === 'airtime' ? 'airtime' : 'cash'
       const transaction = new Transaction()
-      transaction.type = 'redemption'
+      transaction.type =
+        redemption.type === 'airtime'
+          ? TransactionType.AIRTIME
+          : TransactionType.CASH
+      transaction.direction = TransactionDirection.DEBIT
       transaction.amount = redemption.points || 0
       transaction.charges = 0
       transaction.date = new Date()
-      transaction.status = 'fulfilled'
+      transaction.status = TransactionStatus.FULFILLED
       transaction.description = `Your request to convert ${redemption.points?.toFixed(
         2,
       )} points to ${redemptionType} was approved and you've been credited.`
@@ -211,8 +221,6 @@ export const approveRedemption = catchController(
 export const declineRedemption = catchController(
   async (req: Request, res: Response) => {
     const id = req.params.id as string
-    const redemptionRepository = AppDataSource.getRepository(Redemption)
-    const transactionRepository = AppDataSource.getRepository(Transaction)
     const redemption = await redemptionRepository.findOne({
       where: { id },
       relations: ['user', 'user.wallet'],
@@ -244,28 +252,31 @@ export const declineRedemption = catchController(
         )
     }
 
-    redemption.status = RedemptionStatus.DECLINED
+    redemption.status = RedemptionStatus.CANCELLED
     await redemptionRepository.save(redemption)
 
-    const walletRepository = AppDataSource.getRepository(Wallet)
     if (redemption.user) {
       const user = redemption.user as User
       const wallet = await walletRepository.findOne({
         where: { user: { id: user.id } },
       })
       if (wallet) {
-        wallet.points = (wallet.points || 0) + (redemption.points || 0)
+        wallet.points = (wallet.points ?? 0) + (redemption.points ?? 0)
         await walletRepository.save(wallet)
 
         // Create transaction record for decline
         const redemptionType =
           redemption.type === 'airtime' ? 'airtime' : 'cash'
         const transaction = new Transaction()
-        transaction.type = 'redemption'
+        transaction.type =
+          redemption.type === 'airtime'
+            ? TransactionType.AIRTIME
+            : TransactionType.CASH
+        transaction.direction = TransactionDirection.DEBIT
         transaction.amount = redemption.points || 0
         transaction.charges = 0
         transaction.date = new Date()
-        transaction.status = 'cancelled'
+        transaction.status = TransactionStatus.CANCELLED
         transaction.description = `Your request to convert ${redemption.points?.toFixed(
           2,
         )} points to ${redemptionType} was declined. Points have been refunded to your wallet.`
@@ -285,8 +296,6 @@ export const getAllTransactions = catchController(
   async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string, 10) || 1
     const pageSize = parseInt(req.query.pageSize as string, 10) || 10
-    const transactionRepository = AppDataSource.getRepository(Transaction)
-    const configurationRepository = AppDataSource.getRepository(Configurations)
     const [transactions, totalCount] = await transactionRepository.findAndCount(
       {
         relations: ['user', 'wallet'],
@@ -338,11 +347,6 @@ export const getAllTransactions = catchController(
 
 export const getDashboardData = catchController(
   async (req: Request, res: Response) => {
-    const userRepository = AppDataSource.getRepository(User)
-    const scheduleRepository = AppDataSource.getRepository(Schedule)
-    const walletRepository = AppDataSource.getRepository(Wallet)
-
-    const configurationRepository = AppDataSource.getRepository(Configurations)
     const pointToNaira = await configurationRepository.findOne({
       where: { type: 'point_to_naira' },
     })
@@ -377,8 +381,6 @@ export const acceptSchedule = catchController(
     if (typeof id !== 'string') {
       return res.status(400).json({ message: 'Invalid ID format' })
     }
-
-    const scheduleRepository = AppDataSource.getRepository(Schedule)
 
     const existingSchedule = await scheduleRepository.findOne({
       where: { id: id }, // TypeScript is happy now because 'id' is strictly a string
@@ -560,11 +562,6 @@ export const fulfillSchedule = catchController(
         )
     }
 
-    const scheduleRepository = AppDataSource.getRepository(Schedule)
-    const walletRepository = AppDataSource.getRepository(Wallet)
-    const transactionRepository = AppDataSource.getRepository(Transaction)
-    const configurationRepository = AppDataSource.getRepository(Configurations)
-
     const point_to_plastic = await configurationRepository.findOne({
       where: { type: 'point_to_plastic' },
     })
@@ -702,14 +699,18 @@ export const fulfillSchedule = catchController(
     const transaction = new Transaction()
     transaction.user = user
     transaction.date = new Date(Date.now())
-    transaction.type = existingSchedule.category
+    transaction.type =
+      existingSchedule.category === 'pickup'
+        ? TransactionType.PICKUP
+        : TransactionType.DROPOFF
+    transaction.direction = TransactionDirection.CREDIT
     transaction.wallet = wallet
     transaction.schedule = existingSchedule
     transaction.amount = calculatedNairaAmount
     transaction.charges = 0
-    transaction.status = 'completed'
+    transaction.status = TransactionStatus.COMPLETED
 
-    transactionRepository.save(transaction)
+    await transactionRepository.save(transaction)
 
     existingSchedule.status = 'completed'
     existingSchedule.amount = calculatedNairaAmount
@@ -782,7 +783,6 @@ export const getAllRedemptions = catchController(
   async (req: Request, res: Response) => {
     const page = parseInt(req.query.page as string, 10) || 1
     const pageSize = parseInt(req.query.pageSize as string, 10) || 10
-    const redemptionRepository = AppDataSource.getRepository(Redemption)
     const [redemptions, totalCount] = await redemptionRepository.findAndCount({
       relations: ['user'],
       skip: (page - 1) * pageSize,
@@ -869,7 +869,6 @@ export const getAllAccounts = catchController(
 export const getTotalWalletAmount = catchController(
   async (req: Request, res: Response) => {
     const wallets = await walletRepository.find()
-    const configurationRepository = AppDataSource.getRepository(Configurations)
     const pointToNaira = await configurationRepository.findOne({
       where: { type: 'point_to_naira' },
     })
