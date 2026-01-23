@@ -288,6 +288,23 @@ Method: GET
 Path: /api/v1/admin/donation/campaigns
 Description: Retrieves a list of all donation campaigns.
 Headers: Requires Authorization token.
+Sample Request:
+curl --location --request GET 'http://localhost:5000/api/v1/admin/donation/campaigns' \
+--header 'Authorization: Bearer <your_admin_token>'
+Sample Response:
+{
+    "status_code": 200,
+    "data": [
+        {
+            "id": "cbb3c276-8f35-4c42-992a-3a131336c9a6",
+            "title": "Clean Water Initiative",
+            "description": "Providing clean and safe drinking water to rural communities.",
+            "image": "https://example.com/water.jpg"
+        }
+    ],
+    "errors": [],
+    "message": "Success"
+}
 20. Get Campaign by ID
 Method: GET
 Path: /api/v1/admin/donation/campaigns/:id
@@ -295,6 +312,21 @@ Description: Retrieves a single donation campaign by its ID.
 Headers: Requires Authorization token.
 Path Parameters:
 id: The UUID of the donation campaign.
+Sample Request:
+curl --location --request GET 'http://localhost:5000/api/v1/admin/donation/campaigns/cbb3c276-8f35-4c42-992a-3a131336c9a6' \
+--header 'Authorization: Bearer <your_admin_token>'
+Sample Response:
+{
+    "status_code": 200,
+    "data": {
+        "id": "cbb3c276-8f35-4c42-992a-3a131336c9a6",
+        "title": "Clean Water Initiative",
+        "description": "Providing clean and safe drinking water to rural communities.",
+        "image": "https://example.com/water.jpg"
+    },
+    "errors": [],
+    "message": "Success"
+}
 21. Create Campaign
 Method: POST
 Path: /api/v1/admin/donation/campaigns
@@ -304,6 +336,24 @@ Request Body (form-data):
 image: (file) The campaign's image.
 title: (text) The campaign's title.
 description: (text) The campaign's description.
+Sample Request:
+curl --location --request POST 'http://localhost:5000/api/v1/admin/donation/campaigns' \
+--header 'Authorization: Bearer <your_admin_token>' \
+--form 'title="New Campaign"' \
+--form 'description="A new campaign to help the environment."' \
+--form 'image=@/path/to/your/image.jpg'
+Sample Response:
+{
+    "status_code": 201,
+    "data": {
+        "id": "dcf3c276-8f35-4c42-992a-3a131336c9a7",
+        "title": "New Campaign",
+        "description": "A new campaign to help the environment.",
+        "image": "https://res.cloudinary.com/your-cloud-name/image/upload/v1625079369/your-image.jpg"
+    },
+    "errors": [],
+    "message": "Campaign created successfully"
+}
 22. Update Campaign
 Method: PUT
 Path: /api/v1/admin/donation/campaigns/:id
@@ -315,6 +365,22 @@ Request Body (form-data):
 image: (file) The campaign's new image.
 title: (text) The campaign's new title.
 description: (text) The campaign's new description.
+Sample Request:
+curl --location --request PUT 'http://localhost:5000/api/v1/admin/donation/campaigns/dcf3c276-8f35-4c42-992a-3a131336c9a7' \
+--header 'Authorization: Bearer <your_admin_token>' \
+--form 'title="Updated Campaign Title"'
+Sample Response:
+{
+    "status_code": 200,
+    "data": {
+        "id": "dcf3c276-8f35-4c42-992a-3a131336c9a7",
+        "title": "Updated Campaign Title",
+        "description": "A new campaign to help the environment.",
+        "image": "https://res.cloudinary.com/your-cloud-name/image/upload/v1625079369/your-image.jpg"
+    },
+    "errors": [],
+    "message": "Campaign updated successfully"
+}
 23. Delete Campaign
 Method: DELETE
 Path: /api/v1/admin/donation/campaigns/:id
@@ -322,9 +388,19 @@ Description: Deletes a donation campaign.
 Headers: Requires Authorization token.
 Path Parameters:
 id: The UUID of the donation campaign.
+Sample Request:
+curl --location --request DELETE 'http://localhost:5000/api/v1/admin/donation/campaigns/dcf3c276-8f35-4c42-992a-3a131336c9a7' \
+--header 'Authorization: Bearer <your_admin_token>'
+Sample Response:
+{
+    "status_code": 200,
+    "data": {},
+    "errors": [],
+    "message": "Campaign deleted successfully"
+}
 
-# Newly added endpoints
-1. Get All Redemptions
+Redemption Management
+24. Get All Redemptions
 Method: GET
 Endpoint: /api/v1/admin/redemptions
 Description: Retrieves a paginated list of all redemption requests.
@@ -355,7 +431,7 @@ Sample Response:
     "totalCount": 1
   }
 }
-2. Approve a Redemption
+25. Approve a Redemption
 Method: PUT
 Endpoint: /api/v1/admin/redemptions/approve/:id
 Description: Approves a pending redemption request.
@@ -369,7 +445,7 @@ Sample Response:
   "errors": [],
   "message": "Redemption approved"
 }
-3. Decline a Redemption
+26. Decline a Redemption
 Method: PUT
 Endpoint: /api/v1/admin/redemptions/decline/:id
 Description: Declines a pending redemption request and refunds the points to the user.
